@@ -10,7 +10,10 @@
 #include "ps2dev.h"
 
 //Enable serial debug mode?
-#define _PS2DBG Serial
+// Пачиму ниработает?
+#ifdef PS2DBG
+  #define _PS2DBG Serial
+#endif
 
 //since for the device side we are going to be in charge of the clock,
 //the two defines below are how long each _phase_ of the clock cycle is
@@ -60,12 +63,12 @@ PS2dev::golo(int pin)
   digitalWrite(pin, LOW);
 }
 
-int PS2dev::write(unsigned char data)
+char PS2dev::write(byte data)
 {
   delayMicroseconds(BYTEWAIT);
 
-  unsigned char i;
-  unsigned char parity = 1;
+  byte i;
+  byte parity = 1;
 
 #ifdef _PS2DBG
   _PS2DBG.print("sending ");
@@ -96,11 +99,12 @@ int PS2dev::write(unsigned char data)
   for (i=0; i < 8; i++)
     {
       if (data & 0x01)
-	{
-	  gohi(_ps2data);
-	} else {
-	golo(_ps2data);
-      }
+      	{
+      	  gohi(_ps2data);
+      	} else {
+      	  golo(_ps2data);
+        }
+
       delayMicroseconds(CLKHALF);
       golo(_ps2clk);
       delayMicroseconds(CLKFULL);
@@ -115,8 +119,9 @@ int PS2dev::write(unsigned char data)
     {
       gohi(_ps2data);
     } else {
-    golo(_ps2data);
-  }
+      golo(_ps2data);
+    }
+
   delayMicroseconds(CLKHALF);
   golo(_ps2clk);
   delayMicroseconds(CLKFULL);
@@ -136,19 +141,21 @@ int PS2dev::write(unsigned char data)
   return 0;
 }
 
-int PS2dev::available() {
+char PS2dev::available() {
   //delayMicroseconds(BYTEWAIT);
   //return ( (digitalRead(_ps2data) == LOW) || (digitalRead(_ps2clk) == LOW) );
   return ( (digitalRead(_ps2clk) == LOW) );
 }
 
-int PS2dev::read(unsigned char * value)
+char PS2dev::read(byte * value)
 {
-  unsigned char data = 0x00;
-  unsigned char i;
-  unsigned char bit = 0x01;
+  uint16_t data = 0x00;
+  uint16_t bit = 0x01;
 
-  unsigned char parity = 1;
+  byte i;
+  
+
+  byte parity = 1;
 
   //wait for data line to go low and clock line to go high (or timeout)
   unsigned long waiting_since = millis();
@@ -162,13 +169,13 @@ int PS2dev::read(unsigned char * value)
   gohi(_ps2clk);
   delayMicroseconds(CLKHALF);
 
-  for (i=0; i < 8; i++)
+  // Заменить на while!
+  for (i=0; i < 9; i++)
     {
       if (digitalRead(_ps2data) == HIGH)
-	{
-	  data = data | bit;
-	} else {
-      }
+    	{
+    	  data = data | bit;
+    	}
 
 
       bit = bit << 1;
@@ -185,13 +192,20 @@ int PS2dev::read(unsigned char * value)
   // already done the delay for the parity bit
 
   // stop bit
+
+  if (digitalRead(_ps2data) == HIGH)
+      {
+        data = data | bit;
+      }
+  
   delayMicroseconds(CLKHALF);
   golo(_ps2clk);
   delayMicroseconds(CLKFULL);
   gohi(_ps2clk);
   delayMicroseconds(CLKHALF);
+  
 
-
+  // stop ?
   delayMicroseconds(CLKHALF);
   golo(_ps2data);
   golo(_ps2clk);
@@ -201,14 +215,21 @@ int PS2dev::read(unsigned char * value)
   gohi(_ps2data);
 
 
+  //*value = data & 0x0F;
+  //*value = data & 0x00FF;
   *value = data;
 
 #ifdef _PS2DBG
   _PS2DBG.print("Recv ");
   _PS2DBG.println(*value,HEX);
+  _PS2DBG.println(parity);
 #endif
-
-  return 0;
+  if ((parity * 0x10) == (data & 0x10)) {
+    return 0;
+  } else {
+    return 1;
+  };
+  
 }
 
 
@@ -293,10 +314,3 @@ int PS2dev::keyboard_handle(unsigned char *leds) {
   return 0;
 }
 
-int PS2dev::keyboard_mkbrk(unsigned char code)
-{
-  write(code);
-  write(0xF0);
-  write(code);
-  return 0;
-}
